@@ -1,4 +1,5 @@
 import os
+import random  
 from datetime import datetime
 from bot.clients import bot, BOT_INFO, store
 from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
@@ -49,7 +50,7 @@ def _log(message, direction: str, text: str) -> None:
 def cmd_start(message):
     bot.send_message(
         message.chat.id,
-        "Hello! I'm your AI assistant. Send me a message to get started.\n\nUse /help to see available commands.",
+        "Привет, я твой ИИ ассистент, я могу отвечать на твои вопросы и поддерживать беседу. Просто напиши мне что-нибудь!",
     )
 
 
@@ -60,10 +61,23 @@ def cmd_help(message):
         "/help  — show this message",
         "/reset — clear conversation history",
         "/about — about this bot",
+        "/joke  — get a random programming joke",
+      
     ]
     if HF_SPACE_ID:
         lines.append("/model — switch AI provider")
     bot.send_message(message.chat.id, "\n".join(lines))
+
+
+@bot.message_handler(commands=["joke"], func=is_allowed)
+def cmd_joke(message):
+    """Отправляет случайную шутку."""
+    jokes = [
+        "Почему программисты не любят природу? Слишком много багов.",
+        "Какой язык программирования самый романтичный? Python, потому что он обвивает тебя.",
+        "Почему программисты путают Хэллоуин и Рождество? Потому что 31 октября — это 25 декабря в шестнадцатеричной системе.",
+    ]
+    bot.send_message(message.chat.id, random.choice(jokes))
 
 
 @bot.message_handler(commands=["reset"], func=is_allowed)
