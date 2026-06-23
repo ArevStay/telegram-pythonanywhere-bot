@@ -9,6 +9,10 @@ from bot.history import clear_history
 from bot.preferences import get_provider, set_provider
 from bot.rate_limit import is_rate_limited
 
+
+
+
+
 # Verbose console logging for local dev and teaching. Enabled by
 # BOT_VERBOSE_LOG=1 (run_local.py sets this automatically). Prints one
 # line per inbound/outbound message so kids and teachers can see the
@@ -19,6 +23,8 @@ VERBOSE_LOG = os.environ.get("BOT_VERBOSE_LOG", "").strip().lower() in (
     "yes",
     "on",
 )
+
+
 
 
 def _log(message, direction: str, text: str) -> None:
@@ -50,8 +56,9 @@ def _log(message, direction: str, text: str) -> None:
 def cmd_start(message):
     bot.send_message(
         message.chat.id,
-        "Привет, я твой ИИ ассистент, я могу отвечать на твои вопросы и поддерживать беседу. Просто напиши мне что-нибудь!",
-    )
+        "Привет, я твой ИИ ассистент по Python-программированию. "
+        "Я могу помочь тебе с кодом, объяснить синтаксис и алгоритмы, "
+        "а также исправить ошибки и дать улучшения. ")
 
 
 @bot.message_handler(commands=["help"], func=is_allowed)
@@ -166,3 +173,6 @@ def handle_message(message):
         print(f"Error in handle_message: {e}")
         bot.send_message(message.chat.id, "Something went wrong. Please try again.")
         _log(message, "out", f"[error] {e}")
+
+
+ 
