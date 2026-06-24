@@ -12,7 +12,6 @@ from bot.rate_limit import is_rate_limited
 
 
 
-
 # Verbose console logging for local dev and teaching. Enabled by
 # BOT_VERBOSE_LOG=1 (run_local.py sets this automatically). Prints one
 # line per inbound/outbound message so kids and teachers can see the
@@ -52,6 +51,15 @@ def _log(message, direction: str, text: str) -> None:
     print(f"[{ts}] {sender} → {receiver}: {snippet}", flush=True)
 
 
+
+@bot.message_handler(commands=["roast"], func=is_allowed)
+def cmd_roast(message):
+ name = message.text.split(maxsplit=1)[1] if " " in message.text else "you"
+ reply = ask_ai(message.from_user.id, f"Напиши короткую но смешную шутку про {name}.")
+ bot.send_message(message.chat.id, reply)
+
+
+
 @bot.message_handler(commands=["start"], func=is_allowed)
 def cmd_start(message):
     bot.send_message(
@@ -69,28 +77,47 @@ def cmd_help(message):
         "/reset — clear conversation history",
         "/about — about this bot",
         "/joke  — get a random programming joke",
+        "/fact  — get a random programming fact",
+        "/compliment — get a nice compliment",
+        "/roast <name> — roast someone (or yourself if no name is given)",
+       
+       
       
     ]
-    if HF_SPACE_ID:
-        lines.append("/model — switch AI provider")
-    bot.send_message(message.chat.id, "\n".join(lines))
+ 
+
+# @bot.message_handler(commands=["joke"], func=is_allowed)
+# def cmd_joke(message):
+#     """Отправляет случайную шутку."""
+#     jokes = [
+#         "Почему программисты не любят природу? Слишком много багов.",
+#         "Какой язык программирования самый романтичный? Python, потому что он обвивает тебя.",
+#         "Почему программисты путают Хэллоуин и Рождество? Потому что 31 октября — это 25 декабря в шестнадцатеричной системе.",
+#     ]
+#     bot.send_message(message.chat.id, random.choice(jokes))
+
+
 
 
 @bot.message_handler(commands=["joke"], func=is_allowed)
 def cmd_joke(message):
-    """Отправляет случайную шутку."""
-    jokes = [
-        "Почему программисты не любят природу? Слишком много багов.",
-        "Какой язык программирования самый романтичный? Python, потому что он обвивает тебя.",
-        "Почему программисты путают Хэллоуин и Рождество? Потому что 31 октября — это 25 декабря в шестнадцатеричной системе.",
-    ]
-    bot.send_message(message.chat.id, random.choice(jokes))
+ reply = ask_ai(message.from_user.id, "Расскажи одну короткую шутку.")
+ bot.send_message(message.chat.id, reply)
 
+
+
+@bot.message_handler(commands=["fact"], func=is_allowed)
+def cmd_fact(message):
+ reply = ask_ai(message.from_user.id, "Расскажи один интересный факт о программировании.")
+ bot.send_message(message.chat.id, reply)
+
+ 
 
 @bot.message_handler(commands=["reset"], func=is_allowed)
-def cmd_reset(message):
+def cmd_clear(message):
+    """Очищает историю чата пользователя."""
     clear_history(message.from_user.id)
-    bot.send_message(message.chat.id, "Conversation cleared. Starting fresh!")
+    bot.send_message(message.chat.id, "Conversation history cleared.")
 
 
 @bot.message_handler(commands=["about"], func=is_allowed)
@@ -176,3 +203,9 @@ def handle_message(message):
 
 
  
+
+
+@bot.message_handler(commands=["compliment"], func=is_allowed)
+def cmd_compliment(message):
+    reply = ask_ai(message.from_user.id, "Give a nice compliment.")
+    bot.send_message(message.chat.id, reply)
