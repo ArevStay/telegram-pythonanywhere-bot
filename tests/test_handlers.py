@@ -301,3 +301,5 @@ def test_handle_message_uses_keep_typing():
         msg = make_message()
         handle_message(msg)
         mock_keep.assert_called_once_with(456)
+
+
