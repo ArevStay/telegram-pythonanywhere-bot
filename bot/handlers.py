@@ -31,7 +31,7 @@ BTN_COMPLIMENT = "😊 Комплимент"
 
 BTN_REMEMBER = "💾 Заметка"
 BTN_RECALL = "📖 Вспомнить"
-BTN_FORGET = "🗑️ быть"
+BTN_FORGET = "🗑️ Забыть"
 
 BTN_RESET = "🔄 Сброс диалога"
 BTN_ABOUT = "ℹ️ О боте"
