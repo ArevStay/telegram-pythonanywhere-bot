@@ -1,6 +1,8 @@
 import os
 import random
 from datetime import datetime
+from telebot import types
+
 
 from bot.clients import bot, BOT_INFO, store
 from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
@@ -15,6 +17,42 @@ from bot.rate_limit import is_rate_limited
 VERBOSE_LOG = os.environ.get("BOT_VERBOSE_LOG", "").strip().lower() in (
     "1", "true", "yes", "on"
 )
+
+# =========================
+# MENU
+# =========================
+
+BTN_QUEST = "🎮 AI Квест"
+BTN_QUIZ = "🧠 Квиз"
+
+BTN_JOKE = "😂 Шутка"
+BTN_FACT = "💡 Факт"
+BTN_COMPLIMENT = "😊 Комплимент"
+
+BTN_REMEMBER = "💾 Заметка"
+BTN_RECALL = "📖 Вспомнить"
+BTN_FORGET = "🗑️ Забыть"
+
+BTN_RESET = "🔄 Сброс диалога"
+BTN_ABOUT = "ℹ️ О боте"
+BTN_HELP = "❓ Помощь"
+
+BTN_MAIN_MENU = "🏠 Главное меню"
+
+
+def main_menu_keyboard():
+    kb = types.ReplyKeyboardMarkup(
+        resize_keyboard=True,
+        row_width=2
+    )
+
+    kb.row(BTN_QUEST, BTN_QUIZ)
+    kb.row(BTN_JOKE, BTN_FACT, BTN_COMPLIMENT)
+    kb.row(BTN_REMEMBER, BTN_RECALL, BTN_FORGET)
+    kb.row(BTN_RESET, BTN_ABOUT, BTN_HELP)
+    kb.row(BTN_MAIN_MENU)
+
+    return kb
 
 def _log(message, direction: str, text: str) -> None:
     if not VERBOSE_LOG:
@@ -71,14 +109,96 @@ def cmd_roast(message):
     bot.send_message(message.chat.id, reply)
 
 
+
 @bot.message_handler(commands=["start"], func=is_allowed)
 def cmd_start(message):
     bot.send_message(
         message.chat.id,
-        "Привет, я твой ИИ ассистент по Python-программированию. "
-        "Я могу помочь с кодом, объяснить синтаксис и алгоритмы, "
-        "исправить ошибки и дать улучшения. "
-        "Команды: /help, /joke, /fact, /compliment, /roast <name>."
+        "👋 Привет!\n\n"
+        "Я ИИ помощник.\n"
+        "Используй кнопки меню ниже или просто отправь сообщение.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+# =========================
+# MENU BUTTONS
+# =========================
+
+@bot.message_handler(func=lambda m: m.text == BTN_JOKE)
+def menu_joke(message):
+    cmd_joke(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_FACT)
+def menu_fact(message):
+    cmd_fact(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_COMPLIMENT)
+def menu_compliment(message):
+    cmd_compliment(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_RECALL)
+def menu_recall(message):
+    cmd_recall(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_FORGET)
+def menu_forget(message):
+    cmd_forget(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_RESET)
+def menu_reset(message):
+    cmd_clear(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_ABOUT)
+def menu_about(message):
+    cmd_about(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_HELP)
+def menu_help(message):
+    cmd_help(message)
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_MAIN_MENU)
+def menu_main(message):
+    bot.send_message(
+        message.chat.id,
+        "🏠 Главное меню",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_REMEMBER)
+def menu_remember(message):
+    bot.send_message(
+        message.chat.id,
+        "Напишите:\n/remember ваш текст",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_QUEST)
+def menu_quest(message):
+    bot.send_message(
+        message.chat.id,
+        "🎮 AI Квест пока не реализован.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == BTN_QUIZ)
+def menu_quiz(message):
+    bot.send_message(
+        
+        message.chat.id,
+        "🧠 Квиз пока не реализован.",
+        reply_markup=main_menu_keyboard(),
+        
     )
 
 
@@ -102,24 +222,28 @@ def cmd_help(message):
 
 @bot.message_handler(commands=["joke"], func=is_allowed)
 def cmd_joke(message):
+    reply_markup=main_menu_keyboard()
     reply = ask_ai(message.from_user.id, "Расскажи одну короткую шутку.")
     bot.send_message(message.chat.id, reply)
 
 
 @bot.message_handler(commands=["fact"], func=is_allowed)
 def cmd_fact(message):
+    reply_markup=main_menu_keyboard()
     reply = ask_ai(message.from_user.id, "Расскажи один интересный факт о программировании.")
     bot.send_message(message.chat.id, reply)
 
 
 @bot.message_handler(commands=["reset"], func=is_allowed)
 def cmd_clear(message):
+    reply_markup=main_menu_keyboard()
     clear_history(message.from_user.id)
     bot.send_message(message.chat.id, "Conversation history cleared.")
 
 
 @bot.message_handler(commands=["about"], func=is_allowed)
 def cmd_about(message):
+    reply_markup=main_menu_keyboard()
     if HF_SPACE_ID:
         provider = get_provider(message.from_user.id)
         model_line = f"{MODEL} (main)" if provider == "main" else f"{HF_SPACE_ID} (hf)"
@@ -146,6 +270,7 @@ def cmd_about(message):
 
 @bot.message_handler(commands=["remember"], func=is_allowed)
 def cmd_remember(message):
+    reply_markup=main_menu_keyboard()
     parts = (message.text or "").split(maxsplit=1)
 
     if len(parts) < 2:
@@ -160,6 +285,7 @@ def cmd_remember(message):
 
 @bot.message_handler(commands=["recall"], func=is_allowed)
 def cmd_recall(message):
+    reply_markup=main_menu_keyboard()
     note = _get_note(message.from_user.id)
 
     if not note:
@@ -171,6 +297,7 @@ def cmd_recall(message):
 
 @bot.message_handler(commands=["forget"], func=is_allowed)
 def cmd_forget(message):
+    reply_markup=main_menu_keyboard()
     _delete_note(message.from_user.id)
     bot.send_message(message.chat.id, "🗑️ Deleted saved note.")
 
@@ -183,6 +310,7 @@ if HF_SPACE_ID:
 
     @bot.message_handler(commands=["model"], func=is_allowed)
     def cmd_model(message):
+        reply_markup=main_menu_keyboard()
         parts = (message.text or "").split(maxsplit=1)
 
         if len(parts) == 1:
@@ -214,6 +342,7 @@ if HF_SPACE_ID:
 
 @bot.message_handler(content_types=["text"], func=is_allowed)
 def handle_message(message):
+    reply_markup=main_menu_keyboard()
     if not should_respond(message):
         return
 
@@ -244,5 +373,6 @@ def handle_message(message):
 
 @bot.message_handler(commands=["compliment"], func=is_allowed)
 def cmd_compliment(message):
+    reply_markup=main_menu_keyboard()
     reply = ask_ai(message.from_user.id, "Give a nice compliment.")
     bot.send_message(message.chat.id, reply)
