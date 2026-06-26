@@ -219,6 +219,8 @@ def cmd_help(message):
         "/remember <note> — save a note",
         "/recall — show saved note",
         "/forget — delete saved note",
+        "/quiz <topic> — start a quiz on a topic",
+        
     ]
     bot.send_message(message.chat.id, "\n".join(lines))
 
