@@ -158,7 +158,12 @@ def send_next(bot, chat_id):
         return
  
     if st["i"] >= len(st["quiz"]["questions"]):
-        bot.send_message(chat_id, _build_final_text(st), parse_mode="HTML")
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        kb.row(
+            types.InlineKeyboardButton("🔄 Новый квиз", callback_data="menu:quiz"),
+            types.InlineKeyboardButton("🏠 Меню", callback_data="menu:main"),
+        )
+        bot.send_message(chat_id, _build_final_text(st), parse_mode="HTML", reply_markup=kb)
         del QUIZ_STATE[chat_id]
         return
  
