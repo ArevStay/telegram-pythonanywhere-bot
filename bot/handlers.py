@@ -1,7 +1,8 @@
 import os
 import random
+from bot.quiz import register, start_quiz
 from datetime import datetime
-
+from telebot import types
 
 
 from bot.clients import bot, BOT_INFO, store
@@ -194,13 +195,15 @@ def menu_quest(message):
 @bot.message_handler(func=lambda m: m.text == BTN_QUIZ)
 def menu_quiz(message):
     bot.send_message(
-        
         message.chat.id,
-        "🧠 Квиз пока не реализован.",
+        "Напиши тему квиза.\n\nНапример:\n• Космос\n• Python\n• Stray Kids\n• История",
         reply_markup=main_menu_keyboard(),
-        
     )
 
+    bot.register_next_step_handler(
+        message,
+        lambda m: start_quiz(bot, ask_ai, m, m.text)
+    )
 
 @bot.message_handler(commands=["help"], func=is_allowed)
 def cmd_help(message):
