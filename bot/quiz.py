@@ -2,252 +2,182 @@ import json
 import random
 from telebot import types
 
-QUIZ_STATE = {}
+# Хранилище сессий квизов: {user_id: {topic, count, current_index, correct_count, questions}}
+_quiz_sessions = {}
 
-LETTERS = ["A", "B", "C", "D"]
+# ==========================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ОБЪЯВЛЕНЫ ПЕРВЫМИ)
+# ==========================================
 
-
-# =========================
-# GENERATE QUIZ (AI)
-# =========================
-
-def generate_quiz(ask_ai, user_id, topic, amount=5):
-    prompt = f"""
-Create a JSON quiz in Russian about: {topic}
-
-Return ONLY JSON in this format:
-{{
-  "title": "{topic}",
-  "questions": [
-    {{
-      "question": "...",
-      "options": ["A", "B", "C", "D"],
-      "correct": 0,
-      "explanation": "..."
-    }}
-  ]
-}}
-
-Make EXACTLY {amount} questions.
-No markdown, no text outside JSON.
-"""
-
-    txt = ask_ai(user_id, prompt).strip()
-
-    if txt.startswith("```"):
-        txt = txt.strip("`")
-        if txt.lower().startswith("json"):
-            txt = txt[4:]
-
-    return json.loads(txt)
+def generate_progress_bar(current, total):
+    """Генерирует визуальную полоску прогресса"""
+    length = 10
+    filled = int(round((current / total) * length))
+    return "🔹" * filled + "🔸" * (length - filled)
 
 
-# =========================
-# TEXT BUILDERS
-# =========================
-
-def _progress(i, total):
-    bar = int((i / total) * 10)
-    return "▓" * bar + "░" * (10 - bar)
-
-
-def _question_text(st):
-    q = st["quiz"]["questions"][st["i"]]
-    total = len(st["quiz"]["questions"])
-
-    return (
-        f"🧠 <b>{st['quiz']['title']}</b>\n"
-        f"{_progress(st['i'], total)} {st['i']+1}/{total}\n\n"
-        f"❓ <b>{q['question']}</b>"
-    )
-
-
-# =========================
-# KEYBOARD
-# =========================
-
-def _question_keyboard(chat_id, st):
-    q = st["quiz"]["questions"][st["i"]]
-
-    kb = types.InlineKeyboardMarkup(row_width=2)
-
-    for idx, opt in enumerate(q["options"]):
-        letter = LETTERS[idx]
-
-        kb.add(
-            types.InlineKeyboardButton(
-                f"{letter}. {opt}",
-                callback_data=f"q:{chat_id}:{st['i']}:{idx}"
-            )
-        )
-
-    return kb
-
-
-def _next_keyboard(chat_id):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton("➡️ Далее", callback_data=f"next:{chat_id}")
-    )
-    return kb
-
-
-def _final_keyboard():
-    kb = types.InlineKeyboardMarkup()
-    kb.row(
-        types.InlineKeyboardButton("🔄 Ещё раз", callback_data="quiz:restart"),
-        types.InlineKeyboardButton("🏠 Меню", callback_data="menu:main"),
-    )
-    return kb
-
-
-# =========================
-# RESULT
-# =========================
-
-def _result_text(st):
-    total = len(st["quiz"]["questions"])
-    score = st["score"]
-    percent = int((score / total) * 100)
-
-    if percent == 100:
-        msg = "🏆 Идеально!"
-    elif percent >= 70:
-        msg = "🎉 Отлично!"
-    elif percent >= 40:
-        msg = "🙂 Неплохо!"
-    else:
-        msg = "📚 Нужно повторить"
-
-    return (
-        f"🎮 <b>Квиз завершён!</b>\n\n"
-        f"🏅 Результат: {score}/{total} ({percent}%)\n"
-        f"{msg}"
-    )
-
-
-# =========================
-# START QUIZ
-# =========================
-
-def start_quiz(bot, ask_ai, message, topic, amount=5):
-    chat_id = message.chat.id
-
-    wait = bot.send_message(chat_id, "⏳ Генерирую квиз...")
-
-    try:
-        quiz = generate_quiz(ask_ai, message.from_user.id, topic, amount)
-    except Exception:
-        bot.edit_message_text("❌ Ошибка генерации квиза", chat_id, wait.message_id)
+def send_question(bot, chat_id, user_id):
+    """Отправляет текущий вопрос пользователю"""
+    session = _quiz_sessions.get(user_id)
+    if not session:
         return
-
-    QUIZ_STATE[chat_id] = {
-        "quiz": quiz,
-        "i": 0,
-        "score": 0,
-        "answered": False,
-    }
-
-    send_question(bot, chat_id)
-
-
-# =========================
-# SEND QUESTION
-# =========================
-
-def send_question(bot, chat_id):
-    st = QUIZ_STATE.get(chat_id)
-    if not st:
-        return
-
-    if st["i"] >= len(st["quiz"]["questions"]):
-        bot.send_message(
-            chat_id,
-            _result_text(st),
-            reply_markup=_final_keyboard(),
-            parse_mode="HTML"
-        )
-        del QUIZ_STATE[chat_id]
-        return
-
-    st["answered"] = False
-
-    bot.send_message(
-        chat_id,
-        _question_text(st),
-        parse_mode="HTML",
-        reply_markup=_question_keyboard(chat_id, st)
-    )
+        
+    q_index = session["current_index"]
+    current_q = session["questions"][q_index]
+    
+    progress = generate_progress_bar(q_index, session["count"])
+    text = f"Вопрос {q_index + 1} из {session['count']}\nProgress: {progress}\n\n{current_q['question']}"
+    
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    prefixes = ["A) ", "B) ", "C) "]
+    
+    for i, option in enumerate(current_q["options"]):
+        prefix = prefixes[i] if i < len(prefixes) else ""
+        kb.add(types.InlineKeyboardButton(f"{prefix}{option}", callback_data=f"quiz_ans:{i}:{q_index}"))
+        
+    bot.send_message(chat_id, text, reply_markup=kb)
 
 
-# =========================
-# HANDLE ANSWER
-# =========================
-
-def handle_answer(bot, call):
-    _, chat_id, q_i, opt_i = call.data.split(":")
-    chat_id, q_i, opt_i = int(chat_id), int(q_i), int(opt_i)
-
-    st = QUIZ_STATE.get(chat_id)
-    if not st:
-        return
-
-    if st["i"] != q_i:
-        return
-
-    if st["answered"]:
-        return
-
-    st["answered"] = True
-
-    q = st["quiz"]["questions"][st["i"]]
-    correct = q["correct"]
-
-    if opt_i == correct:
-        st["score"] += 1
-        bot.answer_callback_query(call.id, "✅ Верно!")
-    else:
-        bot.answer_callback_query(call.id, "❌ Неверно")
-
+def finish_quiz(bot, chat_id, user_id, session):
+    """Завершает квиз и выводит результаты"""
+    correct = session["correct_count"]
+    total = session["count"]
+    percent = int((correct / total) * 100) if total > 0 else 0
+    
     text = (
-        f"❓ {q['question']}\n\n"
-        f"✔️ Правильный ответ: {q['options'][correct]}\n"
+        f"🎉 Квиз завершён!\n\n"
+        f"🏆 Твой результат: {correct} из {total}\n"
+        f"⭐ Ты набрал {percent}%\n\n"
+        f"✅ Верных ответов: {correct}\n"
+        f"❌ Неверных ответов: {total - correct}\n"
+        f"📊 Всего вопросов: {total}\n\n"
     )
-
-    bot.edit_message_text(
-        text,
-        chat_id,
-        call.message.message_id,
-        reply_markup=_next_keyboard(chat_id)
+    
+    if percent >= 80:
+        text += f"🔥 Отличная работа! Ты настоящий знаток темы «{session['topic']}»! 💙"
+    elif percent >= 50:
+        text += "👍 Хороший результат! Можешь еще лучше!"
+    else:
+        text += "🙃 Стоит немного подтянуть знания по этой теме!"
+        
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.row(
+        types.InlineKeyboardButton("🔄 Пройти ещё раз", callback_data=f"qz:topic:{session['topic']}"),
+        types.InlineKeyboardButton("🏠 Главное меню", callback_data="menu:main")
     )
+    
+    bot.send_message(chat_id, text, reply_markup=kb)
+    _quiz_sessions.pop(user_id, None)
 
 
-# =========================
-# NEXT QUESTION
-# =========================
+def start_quiz(bot, ask_ai, message, topic: str, count: int):
+    """Запускает квиз: запрашивает вопросы у AI, парсит JSON и отправляет первый вопрос."""
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    
+    loading_msg = bot.send_message(chat_id, f"🔄 Генерирую квиз по теме «{topic}»...")
+    
+    prompt = (
+        f"Сгенерируй викторину (квиз) на тему '{topic}'. "
+        f"Количество вопросов: {count}. "
+        f"Ответь СТРОГО в формате JSON массива объектов без какого-либо другого текста, разметки markdown или ```json. "
+        f"Структура объекта: "
+        f'{{"question": "текст вопроса", "options": ["вариант1", "вариант2", "вариант3"], "correct": "вариант1"}}. '
+        f"Вариантов ответов должно быть ровно 3. Правильный ответ должен в точности совпадать с одним из вариантов в options."
+    )
+    
+    try:
+        ai_response = ask_ai(user_id, prompt)
+        clean_json = ai_response.replace("```json", "").replace("```", "").strip()
+        questions = json.loads(clean_json)
+        
+        if not isinstance(questions, list) or len(questions) == 0:
+            raise ValueError("Неверный формат вопросов")
+            
+        questions = questions[:count]
+        
+        for q in questions:
+            random.shuffle(q["options"])
+            
+        _quiz_sessions[user_id] = {
+            "topic": topic,
+            "count": len(questions),
+            "current_index": 0,
+            "correct_count": 0,
+            "questions": questions
+        }
+        
+        bot.delete_message(chat_id, loading_msg.message_id)
+        send_question(bot, chat_id, user_id)
+        
+    except Exception as e:
+        print(f"Quiz Error: {e}")
+        bot.edit_message_text("❌ Не удалось создать квиз. Попробуйте другую тему.", chat_id=chat_id, message_id=loading_msg.message_id)
 
-def next_question(bot, call):
-    chat_id = int(call.data.split(":")[1])
 
-    st = QUIZ_STATE.get(chat_id)
-    if not st:
-        return
-
-    st["i"] += 1
-    send_question(bot, chat_id)
-
-
-# =========================
-# REGISTER
-# =========================
+# ==========================================
+# ОСНОВНОЙ МОДУЛЬ РЕГИСТРАЦИИ ХЭНДЛЕРОВ
+# ==========================================
 
 def register(bot, ask_ai):
-
-    @bot.callback_query_handler(func=lambda c: c.data.startswith("q:"))
-    def answer(call):
-        handle_answer(bot, call)
-
-    @bot.callback_query_handler(func=lambda c: c.data.startswith("next:"))
-    def nxt(call):
-        next_question(bot, call)
+    """Регистрирует хэндлеры для обработки ответов на квиз и перехода дальше."""
+    
+    @bot.callback_query_handler(func=lambda c: c.data.startswith("quiz_ans:"))
+    def handle_answer(call):
         bot.answer_callback_query(call.id)
+        chat_id = call.message.chat.id
+        user_id = call.from_user.id
+        
+        session = _quiz_sessions.get(user_id)
+        if not session:
+            bot.send_message(chat_id, "Сессия квиза не найдена. Начните заново.")
+            return
+            
+        _, ans_index, q_index = call.data.split(":")
+        ans_index = int(ans_index)
+        q_index = int(q_index)
+        
+        if q_index != session["current_index"]:
+            return
+            
+        current_q = session["questions"][q_index]
+        selected_text = current_q["options"][ans_index]
+        correct_text = current_q["correct"]
+        
+        is_correct = (selected_text == correct_text)
+        if is_correct:
+            session["correct_count"] += 1
+            feedback = "✅ Верно!"
+        else:
+            feedback = f"❌ Неверно! Правильный ответ: {correct_text}"
+            
+        text = (
+            f"Вопрос {q_index + 1} из {session['count']}\n"
+            f"Progress: {generate_progress_bar(q_index + 1, session['count'])}\n\n"
+            f"{current_q['question']}\n\n"
+            f"✅ Твой ответ: {selected_text}\n"
+            f"{feedback}"
+        )
+        
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("➡️ Далее", callback_data="quiz_next"))
+        
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=kb)
+
+    @bot.callback_query_handler(func=lambda c: c.data == "quiz_next")
+    def handle_next(call):
+        bot.answer_callback_query(call.id)
+        chat_id = call.message.chat.id
+        user_id = call.from_user.id
+        
+        session = _quiz_sessions.get(user_id)
+        if not session:
+            return
+            
+        session["current_index"] += 1
+        
+        if session["current_index"] >= session["count"]:
+            finish_quiz(bot, chat_id, user_id, session)
+            return
+            
+        send_question(bot, chat_id, user_id)

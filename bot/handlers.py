@@ -299,39 +299,59 @@ def menu(call):
         help_cmd(_CallbackMessage(call))
 
 
+## =========================
+# QUIZ FIX (ОБНОВЛЕННЫЙ)
 # =========================
-# QUIZ FIX (ВАЖНО)
-# =========================
+
+_QUIZ_STATE = {}
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("qz:num:"))
 def quiz_num(call):
     bot.answer_callback_query(call.id)
-
+    chat_id = call.message.chat.id
     user_id = call.from_user.id
     value = call.data.split(":")[2]
 
+    # Своя тема
     if value == "custom":
-        msg = bot.send_message(call.message.chat.id, "Введите тему квиза:")
-        bot.register_next_step_handler(
-            msg,
-            lambda m: start_quiz(bot, ask_ai, m, m.text, 5)
-        )
+        msg = bot.send_message(chat_id, "✏️ Введите свою тему для квиза:")
+        
+        # Фиксируем дефолтное количество вопросов (например, 5) для кастомной темы
+        _QUIZ_STATE[user_id] = 5 
+        
+        def handle_custom(m):
+            count = _QUIZ_STATE.get(m.from_user.id, 5)
+            start_quiz(bot, ask_ai, m, m.text, count)
+            _QUIZ_STATE.pop(m.from_user.id, None)
+
+        bot.register_next_step_handler(msg, handle_custom)
         return
 
-    _QUIZ_STATE[user_id] = int(value)
+    # Сохраняем выбранное количество вопросов
+    try:
+        _QUIZ_STATE[user_id] = int(value)
+    except Exception:
+        _QUIZ_STATE[user_id] = 5
 
-    bot.send_message(call.message.chat.id, "Теперь выбери тему:", reply_markup=quiz_topics_keyboard())
+    # Предлагаем клавиатуру с быстрыми топиками (Космос, Python, Stray Kids и т.д.)
+    bot.send_message(
+        chat_id,
+        "🎯 Выбери тему для квиза:",
+        reply_markup=quiz_topics_keyboard()
+    )
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("qz:topic:"))
 def quiz_topic(call):
     bot.answer_callback_query(call.id)
-
+    chat_id = call.message.chat.id
     user_id = call.from_user.id
     topic = call.data.split(":", 2)[2]
 
+    # Извлекаем сохраненное ранее число вопросов
     count = _QUIZ_STATE.get(user_id, 5)
 
+    # Запускаем движок квиза
     start_quiz(
         bot,
         ask_ai,
@@ -340,8 +360,8 @@ def quiz_topic(call):
         count
     )
 
+    # Очищаем промежуточное состояние выбора количества вопросов
     _QUIZ_STATE.pop(user_id, None)
-
 
 # =========================
 # QUIZ MODULE
