@@ -4,7 +4,6 @@ from telebot import types
 
 from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
 from bot.quiz import register as register_quiz, show_topic_menu
-from bot.quest import register as register_quest, show_genre_menu
 from bot.clients import bot, store
 from bot.ai import ask_ai
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
@@ -13,6 +12,7 @@ from datetime import datetime
 from bot.rate_limit import is_rate_limited
 import bot.config as config   # IMPORTANT (dynamic access)
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+
 
 
 _log = logging.getLogger(__name__)
@@ -112,7 +112,6 @@ def start(m):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     kb.add(
         types.KeyboardButton("🧠 Квиз"),
-        types.KeyboardButton("🗺️ Квест"),
         types.KeyboardButton("ℹ️ О боте"),
         types.KeyboardButton("🔄 Шутка"),
         types.KeyboardButton("💬 Факт"),
@@ -125,7 +124,7 @@ def start(m):
 # MENU
 # =========================
 
-BTN_QUEST = "🎮 AI Квест"
+
 BTN_QUIZ = "🧠 Квиз"
 
 BTN_JOKE = "😂 Шутка"
@@ -150,7 +149,7 @@ def main_menu_keyboard():
         row_width=2
     )
 
-    kb.row(BTN_QUEST, BTN_QUIZ)
+   
     kb.row(BTN_JOKE, BTN_FACT, BTN_COMPLIMENT)
     kb.row(BTN_REMEMBER, BTN_RECALL, BTN_FORGET)
     kb.row(BTN_RESET, BTN_ABOUT, BTN_HELP)
@@ -222,7 +221,7 @@ def main_menu_keyboard():
         row_width=2
     )
 
-    kb.row(BTN_QUEST, BTN_QUIZ)
+    
     kb.row(BTN_JOKE, BTN_FACT, BTN_COMPLIMENT)
     kb.row(BTN_REMEMBER, BTN_RECALL, BTN_FORGET)
     kb.row(BTN_RESET, BTN_ABOUT, BTN_HELP)
@@ -276,10 +275,6 @@ def quiz_cmd(m):
     show_topic_menu(bot, m.chat.id)
 
 
-@bot.message_handler(commands=["quest"], func=is_allowed)
-def quest_cmd(m):
-    show_genre_menu(bot, m.chat.id)
-
 
 # =========================
 # KEYBOARD BUTTONS
@@ -296,8 +291,6 @@ def quiz_button(m):
     content_types=["text"],
     func=lambda m: is_allowed(m) and m.text in ("🗺️ Квест",),
 )
-def quest_button(m):
-    show_genre_menu(bot, m.chat.id)
 
 
 @bot.message_handler(
@@ -395,10 +388,10 @@ def chat(m):
 
 
 # =========================
-# QUIZ & QUEST
+
 # =========================
-register_quiz(bot, ask_ai)
-register_quest(bot, ask_ai)
+
+
 
 
 
@@ -412,7 +405,7 @@ def cmd_compliment(message):
 
 
 
-    
+
 # MEMORY COMMANDS
 # =========================
 
