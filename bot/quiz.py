@@ -1,19 +1,36 @@
 import json
+import random
 from telebot import types
 
 QUIZ_STATE = {}
 
-LETTERS = ["🅰️", "🅱️", "🅲️", "🅳️", "🅴", "🅵"]
+LETTERS = ["A", "B", "C", "D"]
 
 
-# ─────────────────────────────────────────────
-# Генерация квиза
-# ─────────────────────────────────────────────
+# =========================
+# GENERATE QUIZ (AI)
+# =========================
 
-def generate_quiz(ask_ai, user_id, topic):
-    prompt = f"""Create a JSON quiz about: {topic}
-Return ONLY JSON:
-{{"title":"...","questions":[{{"question":"...","options":["","","",""],"correct":0,"explanation":"..."}}]}}"""
+def generate_quiz(ask_ai, user_id, topic, amount=5):
+    prompt = f"""
+Create a JSON quiz in Russian about: {topic}
+
+Return ONLY JSON in this format:
+{{
+  "title": "{topic}",
+  "questions": [
+    {{
+      "question": "...",
+      "options": ["A", "B", "C", "D"],
+      "correct": 0,
+      "explanation": "..."
+    }}
+  ]
+}}
+
+Make EXACTLY {amount} questions.
+No markdown, no text outside JSON.
+"""
 
     txt = ask_ai(user_id, prompt).strip()
 
@@ -25,110 +42,160 @@ Return ONLY JSON:
     return json.loads(txt)
 
 
-# ─────────────────────────────────────────────
-# UI helpers
-# ─────────────────────────────────────────────
+# =========================
+# TEXT BUILDERS
+# =========================
 
-def _progress_bar(current, total, length=10):
-    if total == 0:
-        return ""
-    filled = round(length * current / total)
-    return "▓" * filled + "░" * (length - filled)
+def _progress(i, total):
+    bar = int((i / total) * 10)
+    return "▓" * bar + "░" * (10 - bar)
 
 
-def _build_question_text(st):
-    quiz = st["quiz"]
-    q = quiz["questions"][st["i"]]
-    total = len(quiz["questions"])
-
-    bar = _progress_bar(st["i"], total)
+def _question_text(st):
+    q = st["quiz"]["questions"][st["i"]]
+    total = len(st["quiz"]["questions"])
 
     return (
-        f"📚 <b>{quiz.get('title','Квиз')}</b>\n"
-        f"{bar} <i>{st['i']+1}/{total}</i>\n\n"
+        f"🧠 <b>{st['quiz']['title']}</b>\n"
+        f"{_progress(st['i'], total)} {st['i']+1}/{total}\n\n"
         f"❓ <b>{q['question']}</b>"
     )
 
 
-# ─────────────────────────────────────────────
-# Кнопки вопроса
-# ─────────────────────────────────────────────
+# =========================
+# KEYBOARD
+# =========================
 
-def _build_keyboard(chat_id, st):
+def _question_keyboard(chat_id, st):
     q = st["quiz"]["questions"][st["i"]]
 
     kb = types.InlineKeyboardMarkup(row_width=2)
 
-    buttons = []
     for idx, opt in enumerate(q["options"]):
-        letter = LETTERS[idx] if idx < len(LETTERS) else str(idx + 1)
+        letter = LETTERS[idx]
 
-        buttons.append(
+        kb.add(
             types.InlineKeyboardButton(
-                text=letter,
-                callback_data=f"quiz:{chat_id}:{st['i']}:{idx}",
+                f"{letter}. {opt}",
+                callback_data=f"q:{chat_id}:{st['i']}:{idx}"
             )
         )
 
-    kb.add(*buttons)
     return kb
 
 
-# ─────────────────────────────────────────────
-# Кнопки результата
-# ─────────────────────────────────────────────
+def _next_keyboard(chat_id):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton("➡️ Далее", callback_data=f"next:{chat_id}")
+    )
+    return kb
 
-def _build_result_keyboard(chat_id, st, selected, correct):
-    q = st["quiz"]["questions"][st["i"]]
-    kb = types.InlineKeyboardMarkup(row_width=2)
 
-    buttons = []
-
-    for idx, _ in enumerate(q["options"]):
-        letter = LETTERS[idx] if idx < len(LETTERS) else str(idx + 1)
-
-        if idx == correct:
-            text = f"{letter} ✔️"
-        elif idx == selected:
-            text = f"{letter} ❌"
-        else:
-            text = f"{letter}"
-
-        buttons.append(
-            types.InlineKeyboardButton(text=text, callback_data="noop")
-        )
-
-    kb.add(*buttons)
-
+def _final_keyboard():
+    kb = types.InlineKeyboardMarkup()
     kb.row(
-        types.InlineKeyboardButton("➡️ Далее", callback_data=f"quiz_next:{chat_id}")
+        types.InlineKeyboardButton("🔄 Ещё раз", callback_data="quiz:restart"),
+        types.InlineKeyboardButton("🏠 Меню", callback_data="menu:main"),
+    )
+    return kb
+
+
+# =========================
+# RESULT
+# =========================
+
+def _result_text(st):
+    total = len(st["quiz"]["questions"])
+    score = st["score"]
+    percent = int((score / total) * 100)
+
+    if percent == 100:
+        msg = "🏆 Идеально!"
+    elif percent >= 70:
+        msg = "🎉 Отлично!"
+    elif percent >= 40:
+        msg = "🙂 Неплохо!"
+    else:
+        msg = "📚 Нужно повторить"
+
+    return (
+        f"🎮 <b>Квиз завершён!</b>\n\n"
+        f"🏅 Результат: {score}/{total} ({percent}%)\n"
+        f"{msg}"
     )
 
-    return kb
+
+# =========================
+# START QUIZ
+# =========================
+
+def start_quiz(bot, ask_ai, message, topic, amount=5):
+    chat_id = message.chat.id
+
+    wait = bot.send_message(chat_id, "⏳ Генерирую квиз...")
+
+    try:
+        quiz = generate_quiz(ask_ai, message.from_user.id, topic, amount)
+    except Exception:
+        bot.edit_message_text("❌ Ошибка генерации квиза", chat_id, wait.message_id)
+        return
+
+    QUIZ_STATE[chat_id] = {
+        "quiz": quiz,
+        "i": 0,
+        "score": 0,
+        "answered": False,
+    }
+
+    send_question(bot, chat_id)
 
 
-# ─────────────────────────────────────────────
-# Ответ пользователя
-# ─────────────────────────────────────────────
+# =========================
+# SEND QUESTION
+# =========================
+
+def send_question(bot, chat_id):
+    st = QUIZ_STATE.get(chat_id)
+    if not st:
+        return
+
+    if st["i"] >= len(st["quiz"]["questions"]):
+        bot.send_message(
+            chat_id,
+            _result_text(st),
+            reply_markup=_final_keyboard(),
+            parse_mode="HTML"
+        )
+        del QUIZ_STATE[chat_id]
+        return
+
+    st["answered"] = False
+
+    bot.send_message(
+        chat_id,
+        _question_text(st),
+        parse_mode="HTML",
+        reply_markup=_question_keyboard(chat_id, st)
+    )
+
+
+# =========================
+# HANDLE ANSWER
+# =========================
 
 def handle_answer(bot, call):
-    try:
-        _, chat_id_s, q_idx_s, opt_idx_s = call.data.split(":")
-        chat_id, q_idx, opt_idx = int(chat_id_s), int(q_idx_s), int(opt_idx_s)
-    except:
-        bot.answer_callback_query(call.id, "Ошибка данных")
-        return
+    _, chat_id, q_i, opt_i = call.data.split(":")
+    chat_id, q_i, opt_i = int(chat_id), int(q_i), int(opt_i)
 
     st = QUIZ_STATE.get(chat_id)
     if not st:
         return
 
-    if q_idx != st["i"]:
-        bot.answer_callback_query(call.id, "Устаревший вопрос")
+    if st["i"] != q_i:
         return
 
     if st["answered"]:
-        bot.answer_callback_query(call.id, "Уже отвечено")
         return
 
     st["answered"] = True
@@ -136,176 +203,51 @@ def handle_answer(bot, call):
     q = st["quiz"]["questions"][st["i"]]
     correct = q["correct"]
 
-    if opt_idx == correct:
+    if opt_i == correct:
         st["score"] += 1
         bot.answer_callback_query(call.id, "✅ Верно!")
     else:
         bot.answer_callback_query(call.id, "❌ Неверно")
 
-    result_text = build_result_text(q, opt_idx, correct)
+    text = (
+        f"❓ {q['question']}\n\n"
+        f"✔️ Правильный ответ: {q['options'][correct]}\n"
+    )
 
     bot.edit_message_text(
-        result_text,
-        call.message.chat.id,
-        call.message.message_id,
-        parse_mode="HTML",
-        reply_markup=_build_result_keyboard(chat_id, st, opt_idx, correct)
-    )
-
-
-def build_result_text(q, selected, correct):
-    is_correct = selected == correct
-
-    lines = [
-        "✅ <b>Верно!</b>" if is_correct else "❌ <b>Неверно</b>",
-        "",
-        f"❓ {q['question']}",
-        ""
-    ]
-
-    for idx, opt in enumerate(q["options"]):
-        letter = LETTERS[idx] if idx < len(LETTERS) else str(idx + 1)
-
-        mark = ""
-        if idx == correct:
-            mark = " ✔️"
-        elif idx == selected:
-            mark = " ❌"
-
-        lines.append(f"{letter} {opt}{mark}")
-
-    if q.get("explanation"):
-        lines += ["", f"💡 <i>{q['explanation']}</i>"]
-
-    return "\n".join(lines)
-
-
-# ─────────────────────────────────────────────
-# Переход к следующему вопросу
-# ─────────────────────────────────────────────
-
-def send_next(bot, chat_id):
-    st = QUIZ_STATE.get(chat_id)
-    if st is None:
-        return
-
-    quiz = st["quiz"]
-
-    if st["i"] >= len(quiz["questions"]):
-        kb = types.InlineKeyboardMarkup()
-
-        kb.row(
-            types.InlineKeyboardButton("🔄 Новый квиз", callback_data="menu:quiz"),
-            types.InlineKeyboardButton("🏠 Меню", callback_data="menu:main"),
-        )
-
-        bot.send_message(
-            chat_id,
-            build_final_text(st),
-            parse_mode="HTML",
-            reply_markup=kb
-        )
-
-        del QUIZ_STATE[chat_id]
-        return
-
-    q = quiz["questions"][st["i"]]
-
-    text = (
-        f"📚 <b>{quiz.get('title','Квиз')}</b>\n\n"
-        f"❓ <b>{q['question']}</b>"
-    )
-
-    bot.send_message(
-        chat_id,
         text,
-        parse_mode="HTML",
-        reply_markup=_build_keyboard(chat_id, st)
+        chat_id,
+        call.message.message_id,
+        reply_markup=_next_keyboard(chat_id)
     )
 
 
-def next_question(bot, chat_id):
+# =========================
+# NEXT QUESTION
+# =========================
+
+def next_question(bot, call):
+    chat_id = int(call.data.split(":")[1])
+
     st = QUIZ_STATE.get(chat_id)
     if not st:
         return
 
     st["i"] += 1
-    st["answered"] = False
-
-    send_next(bot, chat_id)
+    send_question(bot, chat_id)
 
 
-# ─────────────────────────────────────────────
-# Финальный экран
-# ─────────────────────────────────────────────
-
-def build_final_text(st):
-    total = len(st["quiz"]["questions"])
-    score = st["score"]
-    pct = round(100 * score / total) if total else 0
-
-    if pct == 100:
-        emoji = "🏆"
-        msg = "Идеально!"
-    elif pct >= 70:
-        emoji = "🎉"
-        msg = "Отличный результат!"
-    elif pct >= 40:
-        emoji = "🙂"
-        msg = "Неплохо!"
-    else:
-        emoji = "📖"
-        msg = "Стоит повторить тему."
-
-    return (
-        f"{emoji} <b>Квиз завершён!</b>\n\n"
-        f"Результат: <b>{score}/{total}</b> ({pct}%)\n"
-        f"{msg}"
-    )
-
-
-# ─────────────────────────────────────────────
-# Регистрация
-# ─────────────────────────────────────────────
+# =========================
+# REGISTER
+# =========================
 
 def register(bot, ask_ai):
 
-    @bot.message_handler(commands=["quiz"])
-    def quiz_cmd(message):
-        parts = message.text.split(maxsplit=1)
-        if len(parts) < 2:
-            bot.reply_to(message, "Использование: /quiz <тема>")
-            return
-
-        topic = parts[1]
-        chat_id = message.chat.id
-
-        wait = bot.send_message(chat_id, f"⏳ Генерирую квиз по теме «{topic}»...")
-
-        try:
-            quiz = generate_quiz(ask_ai, message.from_user.id, topic)
-        except:
-            bot.edit_message_text(
-                "⚠️ Не удалось сгенерировать квиз.",
-                chat_id,
-                wait.message_id
-            )
-            return
-
-        QUIZ_STATE[chat_id] = {
-            "quiz": quiz,
-            "i": 0,
-            "score": 0,
-            "answered": False,
-        }
-
-        send_next(bot, chat_id)
-
-    @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("quiz:"))
-    def callback_handler(call):
+    @bot.callback_query_handler(func=lambda c: c.data.startswith("q:"))
+    def answer(call):
         handle_answer(bot, call)
 
-    @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("quiz_next:"))
-    def next_handler(call):
-        chat_id = int(call.data.split(":")[1])
-        next_question(bot, chat_id)
+    @bot.callback_query_handler(func=lambda c: c.data.startswith("next:"))
+    def nxt(call):
+        next_question(bot, call)
+        bot.answer_callback_query(call.id)

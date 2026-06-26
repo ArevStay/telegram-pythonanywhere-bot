@@ -3,13 +3,12 @@ from datetime import datetime
 
 from telebot import types
 
-from bot.quiz import register as register_quiz
+from bot.quiz import register as register_quiz, start_quiz
 from bot.clients import bot, BOT_INFO, store
-from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
+from bot.config import HF_SPACE_ID
 from bot.ai import ask_ai
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot.history import clear_history
-from bot.preferences import get_provider, set_provider
 from bot.rate_limit import is_rate_limited
 
 
@@ -17,6 +16,13 @@ VERBOSE_LOG = os.environ.get("BOT_VERBOSE_LOG", "").strip().lower() in (
     "1", "true", "yes", "on"
 )
 
+# =========================
+# QUIZ STATE (НОВОЕ)
+# =========================
+
+_QUIZ_STATE = {}
+
+QUICK_QUIZ_TOPICS = ["Космос", "Python", "История", "Кино"]
 
 # =========================
 # BUTTONS
@@ -38,8 +44,6 @@ BTN_HELP = "❓ Помощь"
 BTN_MODEL = "⚙️ Модель"
 
 BTN_MAIN_MENU = "🏠 Главное меню"
-
-QUICK_QUIZ_TOPICS = ["Космос", "Python", "История", "Кино"]
 
 
 # =========================
@@ -75,6 +79,27 @@ def main_menu_keyboard():
     return kb
 
 
+def quiz_keyboard():
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    kb.add(
+        types.InlineKeyboardButton("5", callback_data="qz:num:5"),
+        types.InlineKeyboardButton("7", callback_data="qz:num:7"),
+        types.InlineKeyboardButton("10", callback_data="qz:num:10"),
+    )
+    kb.add(types.InlineKeyboardButton("✏️ Своя тема", callback_data="qz:num:custom"))
+    return kb
+
+
+def quiz_topics_keyboard():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+
+    for t in QUICK_QUIZ_TOPICS:
+        kb.add(types.InlineKeyboardButton(t, callback_data=f"qz:topic:{t}"))
+
+    kb.row(types.InlineKeyboardButton(BTN_MAIN_MENU, callback_data="menu:main"))
+    return kb
+
+
 def back_to_menu_keyboard():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(BTN_MAIN_MENU, callback_data="menu:main"))
@@ -87,19 +112,6 @@ def again_keyboard(action: str):
         types.InlineKeyboardButton("🔄 Ещё", callback_data=f"menu:{action}"),
         types.InlineKeyboardButton(BTN_MAIN_MENU, callback_data="menu:main"),
     )
-    return kb
-
-
-def quiz_topics_keyboard():
-    kb = types.InlineKeyboardMarkup(row_width=2)
-
-    kb.add(*[
-        types.InlineKeyboardButton(t, callback_data=f"qz:{t}")
-        for t in QUICK_QUIZ_TOPICS
-    ])
-
-    kb.row(types.InlineKeyboardButton("✏️ Своя тема", callback_data="qz:custom"))
-    kb.row(types.InlineKeyboardButton(BTN_MAIN_MENU, callback_data="menu:main"))
     return kb
 
 
@@ -242,22 +254,19 @@ def forget(m):
 # MENU CALLBACK
 # =========================
 
-@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("menu:"))
+@bot.callback_query_handler(func=lambda c: c.data.startswith("menu:"))
 def menu(call):
-    if not call.message:
-        return
-
     chat_id = call.message.chat.id
     user_id = call.from_user.id
-    action = call.data.split(":")[1]
-
     bot.answer_callback_query(call.id)
 
-    if action == "main":
-        bot.send_message(chat_id, "🏠 меню", reply_markup=main_menu_keyboard())
+    action = call.data.split(":")[1]
 
-    elif action == "quiz":
-        bot.send_message(chat_id, "выбери тему", reply_markup=quiz_topics_keyboard())
+    if action == "quiz":
+        bot.send_message(chat_id, "Выбери количество вопросов:", reply_markup=quiz_keyboard())
+
+    elif action == "main":
+        bot.send_message(chat_id, "🏠 меню", reply_markup=main_menu_keyboard())
 
     elif action == "joke":
         _send_joke(chat_id, user_id)
@@ -291,7 +300,51 @@ def menu(call):
 
 
 # =========================
-# QUIZ INTEGRATION (ВАЖНО)
+# QUIZ FIX (ВАЖНО)
+# =========================
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("qz:num:"))
+def quiz_num(call):
+    bot.answer_callback_query(call.id)
+
+    user_id = call.from_user.id
+    value = call.data.split(":")[2]
+
+    if value == "custom":
+        msg = bot.send_message(call.message.chat.id, "Введите тему квиза:")
+        bot.register_next_step_handler(
+            msg,
+            lambda m: start_quiz(bot, ask_ai, m, m.text, 5)
+        )
+        return
+
+    _QUIZ_STATE[user_id] = int(value)
+
+    bot.send_message(call.message.chat.id, "Теперь выбери тему:", reply_markup=quiz_topics_keyboard())
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("qz:topic:"))
+def quiz_topic(call):
+    bot.answer_callback_query(call.id)
+
+    user_id = call.from_user.id
+    topic = call.data.split(":", 2)[2]
+
+    count = _QUIZ_STATE.get(user_id, 5)
+
+    start_quiz(
+        bot,
+        ask_ai,
+        _CallbackMessage(call),
+        topic,
+        count
+    )
+
+    _QUIZ_STATE.pop(user_id, None)
+
+
+# =========================
+# QUIZ MODULE
 # =========================
 
 register_quiz(bot, ask_ai)
