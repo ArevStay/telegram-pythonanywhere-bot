@@ -118,6 +118,7 @@ def start(m):
         types.KeyboardButton("💌 Комплимент"),
         types.KeyboardButton("🔄 Сброс")
 
+
     )
 
 
@@ -277,11 +278,13 @@ def quiz_cmd(m):
 
 
 # =========================
+# =========================
 # KEYBOARD BUTTONS
 # =========================
+
 @bot.message_handler(
     content_types=["text"],
-    func=lambda m: is_allowed(m) and m.text in ("🧠 Квиз",),
+    func=lambda m: is_allowed(m) and m.text == "🧠 Квиз",
 )
 def quiz_button(m):
     show_topic_menu(bot, m.chat.id)
@@ -289,13 +292,16 @@ def quiz_button(m):
 
 @bot.message_handler(
     content_types=["text"],
-    func=lambda m: is_allowed(m) and m.text in ("🗺️ Квест",),
+    func=lambda m: is_allowed(m) and m.text == "🗺️ Квест",
 )
+def quest_button(m):
+    # TODO: подключи свою логику квеста
+    bot.send_message(m.chat.id, "Квест пока в разработке 🗺️")
 
 
 @bot.message_handler(
     content_types=["text"],
-    func=lambda m: is_allowed(m) and m.text in ("ℹ️ О боте",),
+    func=lambda m: is_allowed(m) and m.text == "ℹ️ О боте",
 )
 def about_button(m):
     cmd_about(m)
@@ -303,13 +309,11 @@ def about_button(m):
 
 @bot.message_handler(
     content_types=["text"],
-    func=lambda m: is_allowed(m) and m.text in ("🔄 Сброс",),
+    func=lambda m: is_allowed(m) and m.text == "🔄 Сброс",
 )
 def reset_button(m):
     clear_history(m.from_user.id)
-    bot.send_message(m.chat.id, "cleared")
-
-
+    bot.send_message(m.chat.id, "🧹 История очищена")
 
 @bot.message_handler(commands=["about"], func=is_allowed)
 def cmd_about(message):
