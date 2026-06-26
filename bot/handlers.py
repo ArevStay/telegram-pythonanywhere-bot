@@ -1,7 +1,7 @@
 import os
 import random
 from datetime import datetime
-from telebot import types
+
 
 
 from bot.clients import bot, BOT_INFO, store
